@@ -7,6 +7,8 @@ TODO list for RDC integration
   For each staff member, get the Faculty by looking up the AOU in the
   Groups file, and then build the URL with Faculty and the Staff Module ID.
 
+  ^--- DONE
+
 - Figure out a way to get the incidental AOU information - I think
   this will need manual maintenance because there's No One Place where
   things like contact emails are stored.  For now we can leave a lot

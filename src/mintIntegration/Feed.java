@@ -13,27 +13,36 @@ import org.apache.commons.configuration.Configuration;
 import org.apache.commons.csv.CSVPrinter;
 import org.apache.commons.csv.CSVStrategy;
 import org.apache.commons.lang.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class Feed {
-	
-	String dir;
-	String name;
-	String sql;
-	String file;
-	Configuration conf;
-	int primary_key_column;
-	int fors_column;
-	int max_fors;
-	int n_infields;
-	int n_outfields;
-	String fors_prefix;
-	boolean has_fors;
-	boolean trace;
-	HashMap<String, HashMap<String, String>> records;
-	
-	ArrayList<String> infields;
-	ArrayList<String> outfields;
 
+    private static Logger log = LoggerFactory.getLogger(Feed.class);
+
+	private String dir;
+	private String name;
+	private String sql;
+	private String file;
+	private Configuration conf;
+	private int primary_key_column;
+	private int fors_column;
+	private int max_fors;
+	private int n_infields;
+	private int n_outfields;
+	private String fors_prefix;
+	private boolean has_fors;
+	private boolean trace;
+	private HashMap<String, HashMap<String, String>> records;
+	
+	private ArrayList<String> infields;
+	private ArrayList<String> outfields;
+
+	
+	/* FIXME: this could do with some exception handling against 
+	 * invalid config files
+	 */
+	
 	Feed(String working_dir, Configuration qconf) {
 		dir = working_dir;
 		conf = qconf;
@@ -50,7 +59,7 @@ public class Feed {
 	}
 	
 	
-	void loadFields() {
+	private void loadFields() {
 		
     	n_infields = conf.getList("infields.field[@name]").size();
     	
@@ -87,19 +96,19 @@ public class Feed {
 
 
 	
-    void runQuery(Connection con) {
+    public void runQuery(Connection con) {
     	
     	Statement stmt = null;
     	ResultSet rset = null;
     	
     	records = (HashMap<String, HashMap<String, String>>)new HashMap();
 
-    	System.out.println("Running query: " + name);
+    	log.debug("Running query: " + name);
 
     	try {
     		stmt = con.createStatement();
 	    
-    		System.out.println("SQL: " + sql);
+    		log.debug("SQL: " + sql);
     		rset = stmt.executeQuery(sql);
 
     		ResultSetMetaData rsmd = rset.getMetaData();
@@ -116,15 +125,15 @@ public class Feed {
     			}
     			String id = StringUtils.trim(line[primary_key_column]);
     			if( trace ) {
-    				System.out.println("ID = " + id);
-    				System.out.println("Row: " + StringUtils.join(line, ','));
+    				log.debug("ID = " + id);
+    				log.debug("Row: " + StringUtils.join(line, ','));
     			}
     			if( records.containsKey(id) ) {
     				HashMap<String, String> record = records.get(id);
     				if( has_fors ) {
     					setFOR(record, line[fors_column]);
     				} else {
-    					System.out.println("Warning: multiple records with ID='" + id + "'");
+    					log.debug("Warning: multiple records with ID='" + id + "'");
     				} 
     			} else {
     				HashMap<String, String> record = (HashMap<String, String>)new HashMap();
@@ -134,7 +143,7 @@ public class Feed {
     					record.put(infields.get(i), StringUtils.trim(line[i]));
     				}
         			if( trace ) {
-        				System.out.println("Storing record with id = '" + id + "'");
+        				log.debug("Storing record with id = '" + id + "'");
         				
         			}
     				records.put(id, record);
@@ -144,7 +153,7 @@ public class Feed {
     		rset.close();
     		stmt.close();
     		
-    		System.out.println("Got " + records.size() + " records");
+    		log.debug("Got " + records.size() + " records");
     		
     	} catch ( Exception e ) {
     		e.printStackTrace();
@@ -152,7 +161,7 @@ public class Feed {
     }
     
     
-    void setFOR(HashMap<String, String> record, String FOR) {
+    private void setFOR(HashMap<String, String> record, String FOR) {
     	boolean setfor = false;
     	for( int j = 0; j < max_fors && !setfor; j++ ) {
     		String field = fors_prefix + "_" + (j + 1);
@@ -163,12 +172,12 @@ public class Feed {
     	}
     	if( !setfor ) {
     		String id = record.get(infields.get(primary_key_column));
-    		System.out.println("Warning: more than " + max_fors + " FOR codes on ID=" + id);
+    		log.warn("Warning: more than " + max_fors + " FOR codes on ID=" + id);
     	}
     }
     
 
-    void printCSV() {
+    public void printCSV() {
     	FileWriter fw = null;
     	CSVPrinter csv = null;
 
@@ -178,7 +187,7 @@ public class Feed {
     	
     	String path = dir + '/' + file;
     	
-    	System.out.println("Writing CSV to " + path);
+    	log.debug("Writing CSV to " + path);
     	
     	try {
     		fw = new FileWriter(path);
@@ -221,12 +230,12 @@ public class Feed {
     			}
     		}
     		if( trace ) {
-    			System.out.println("Writing CSV, ID = '" + id + "': " + StringUtils.join(csvline, ','));
+    			log.debug("Writing CSV, ID = '" + id + "': " + StringUtils.join(csvline, ','));
     		}
     		try {
     			csv.println(csvline);
     		} catch( Exception e ) {
-    			System.out.println("Something went wrong");
+    			log.error("Failed to print CSV line");
     			e.printStackTrace();
     			System.exit(1);
     		}

@@ -200,6 +200,9 @@ sub read_mint_cfg {
 		
 		my $query = $_->parent('query')->{att}{name};
 		my $name = $_->{att}{name};
+		if( !$config->{$query}{files}{$name} ) {
+		    $config->{$query}{files}{$name} = {};
+		}
 		my $fc = $config->{$query}{files}{$name};
 		$fc->{filename} = $_->{att}{file};
 		$fc->{fields} = [];

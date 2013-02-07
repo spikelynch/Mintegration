@@ -7,11 +7,16 @@ import java.util.Map;
 import org.apache.commons.configuration.Configuration;
 import org.apache.commons.configuration.ConfigurationException;
 import org.apache.commons.configuration.XMLConfiguration;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class StaffModuleFeeder {
 	
-    static XMLConfiguration conf = null;
-    static Connection con = null;
+    private static XMLConfiguration conf = null;
+    private static Connection con = null;
+    
+    private static Logger log = LoggerFactory.getLogger(HandleAdmin.class);
+   
     
     public static void main(String[] args) {
 
@@ -22,7 +27,7 @@ public class StaffModuleFeeder {
     	config_file = env.get("RDCMINT_CONFIG");
     	
     	if( config_file == null || config_file.isEmpty() ) {
-    		System.out.println("Set environment variable RDCMINT_CONFIG to config file location.\n");
+    		log.error("Set environment variable RDCMINT_CONFIG to config file location.");
     	} else {
     		
     		try {
@@ -49,6 +54,7 @@ public class StaffModuleFeeder {
         		}
         		System.out.println("Done.");
     		} catch( ConfigurationException e ) {
+    			log.error("Config error");
     			e.printStackTrace();
     		};
     	
@@ -78,6 +84,7 @@ public class StaffModuleFeeder {
             System.out.println("Connected to database");
             
         } catch (Exception e) {
+        	log.error("Couldn't connect to database");
             e.printStackTrace();
         }
     }

@@ -34,7 +34,7 @@ use FTIUP::Log;
 
 use MintUtils qw(read_csv read_mint_cfg write_csv);
 
-my $MAX_TEST = 8;
+my $MAX_TEST = undef;
 
 my $DEFAULT_CONFIG = 'config.xml';
 
