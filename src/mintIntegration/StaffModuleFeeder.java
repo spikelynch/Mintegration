@@ -47,7 +47,6 @@ public class StaffModuleFeeder {
         			Configuration qcon = queries.subset("query(" + i + ")");
         			String name = queries.getString("query(" + i + ")[@name]");
         			i++;
-        			System.out.println(name);
         			Feed feed = new Feed(working_dir, qcon);
         			feed.runQuery(con);
         			feed.printCSV();
@@ -76,16 +75,15 @@ public class StaffModuleFeeder {
     	String password = conf.getString("connection.password");
     	String dbi = "jdbc:jtds:" + type + "://" + server + ":" + port + "/" + database + ";domain=" + domain; 
 
-    	System.out.println("DBI: " + dbi);
+    	log.debug("DBI: " + dbi);
     	
         try {
             Class.forName("net.sourceforge.jtds.jdbc.Driver");
             con = DriverManager.getConnection(dbi, user, password);
-            System.out.println("Connected to database");
+            log.debug("Connected to database");
             
         } catch (Exception e) {
-        	log.error("Couldn't connect to database");
-            e.printStackTrace();
+        	log.error("Couldn't connect to database", e);
         }
     }
 }

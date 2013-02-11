@@ -180,7 +180,7 @@ private byte[] readPrivateKey() throws Exception {
 
 /**
  *
- * @param key: The private keey to check
+ * @param key: The private key to check
  * @return byte[]: The byte data of the pass phrase, possibly null
  * @throws Exception: If 
  */
@@ -202,6 +202,11 @@ private byte[] readPassPhrase(byte[] key) throws Exception {
     // Null is fine if no passphrase is required
     return null;
 }
+
+
+
+
+
 
 
 /* createHandle
@@ -236,7 +241,7 @@ private byte[] readPassPhrase(byte[] key) throws Exception {
         HandleValue adminVal = getAdminHandleValue();
         HandleValue descVal = getDescHandleValue(description);
         if (adminVal == null ) {
-        	throw new Exception("Error creatingg HandleValue: admin");
+        	throw new Exception("Error creating HandleValue: admin");
         }
         if( descVal == null) {
             throw new Exception("Error creating HandleValues: description");

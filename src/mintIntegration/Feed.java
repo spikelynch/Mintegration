@@ -108,7 +108,6 @@ public class Feed {
     	try {
     		stmt = con.createStatement();
 	    
-    		log.debug("SQL: " + sql);
     		rset = stmt.executeQuery(sql);
 
     		ResultSetMetaData rsmd = rset.getMetaData();
