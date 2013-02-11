@@ -7,6 +7,7 @@ use base qw( Exporter );
 use XML::Twig;
 use Text::CSV;
 use Data::Dumper;
+use Log::Log4perl;
 
 our @EXPORT_OK = qw(read_csv write_csv read_mint_cfg);
 
@@ -45,8 +46,10 @@ sub read_csv {
     my $config = $params{config};
     my $query = $params{query};
 
+	my $log = Log::Log4perl->get_logger('mintIntegration.MintUtils');
+
     my $fconf = $config->{$query}{files}{$file} || do {
-	die("Query/file $query/$file not found, check the config file.\n");
+		die("Query/file $query/$file not found, check the config file.\n");
     };
 
 
@@ -97,6 +100,8 @@ sub write_csv {
     my $query = $params{query};
     my $records = $params{records};
 
+	my $log = Log::Log4perl->get_logger('mintIntegration.MintUtils');
+
     my $fconf = $config->{$query}{files}{$file} || do {
 	die("Query/file $query/$file not found, check the config file.\n");
     };
@@ -122,7 +127,7 @@ sub write_csv {
 	for my $field ( @fields ) {
 	    if( my $cv = $fconf->{convert}{$field} ) { 
 		if( exists $cv->{$record{$field}} ) {
-		    print "[$field] convert $record{$field} to $cv->{$record{$field}}\n";
+		    $log->trace("[$field] convert $record{$field} to $cv->{$record{$field}}");
 		    $record{$field} = $cv->{$record{$field}};
 	        }
 	    }
@@ -181,6 +186,8 @@ sub read_mint_cfg {
 
     my $config = {};
 
+	my $log = Log::Log4perl->get_logger('mintIntegration.MintUtils');
+
     my $xt = XML::Twig->new(
 	twig_handlers => {
 
@@ -218,7 +225,7 @@ sub read_mint_cfg {
 		my $query = $_->parent('query')->{att}{name};
 		my $from = $_->{att}{from};
 		my $to = $_->{att}{to};
-		print "[#] $query/$name/$field/$from => $to\n";
+		$log->debug("Substitute $query/$name/$field/$from => $to");
 		$config->{$query}{files}{$name}{convert}{$field}{$from} = $to;
 	    },
 

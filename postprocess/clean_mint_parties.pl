@@ -26,12 +26,12 @@ Staff Module and before they are harvested by Mint:
 
 use strict;
 
-use lib './extras';
-use lib '/home/mike/workspace/FTIUP/lib';
+use lib $ENV{MINT_PERL_LOCATION};
+
 
 use Data::Dumper;
 use Getopt::Std;
-use FTIUP::Log;
+use Log::Log4perl;
 
 use MintUtils qw(read_csv read_mint_cfg write_csv);
 
@@ -45,7 +45,13 @@ if( $opts{h} ) {
     usage();
 }
 
-my $config = $opts{c} || $DEFAULT_CONFIG;
+die("Need to point MINT_LOG4J to the log4j.properties file\n") unless $ENV{MINT_LOG4J};
+
+Log::Log4perl::init($ENV{MINT_LOG4J});
+
+my $log = Log::Log4perl->get_logger('mintIntegration.perlscripts.clean');
+
+my $config = $opts{c} || $ENV{MINT_CONFIG} || $DEFAULT_CONFIG;
 
 my $mint_cfg   = read_mint_cfg(file => $config);
 
@@ -59,7 +65,7 @@ if( $opts{d} ) {
 my $working_dir = $mint_cfg->{dirs}{working} || './';
 my $harvest_dir = $mint_cfg->{dirs}{harvest} || './';
 
-my $log = FTIUP::Log->new(dir => $mint_cfg->{dirs}{logs});
+
 
 $working_dir .= '/' unless $working_dir =~ m#/$#;
 $harvest_dir .= '/' unless $harvest_dir =~ m#/$#;
@@ -88,7 +94,7 @@ my $mus = read_csv(
 
 for my $muid ( keys %$mus ) {
     if( $aous->{$muid} ) {
-	$log->log("MU/AOU key clash: $muid\n");
+	$log->warn("MU/AOU key clash: $muid\n");
     } else {
 	$aous->{$muid} = $mus->{$muid}
     }
@@ -123,7 +129,7 @@ write_csv(
     records => $people
     );
 
-$log->log("Done.\n");
+$log->info("Done.\n");
 
 
 =item usage()
@@ -183,27 +189,27 @@ sub clean_aous {
 	my $name = $aou->{Name};
 
 	if( $name =~ /$ignore_re/ ) {
-	    $log->log("Ignoring AOU $aouID $name\n");
+	    $log->info("Ignoring AOU $aouID $name\n");
 	    delete $aous->{$aouID};
 	    next AOU;
 	}
 
 	if( $name =~ /\|/ ) {
 	    ( $name ) = split(/\|/, $name);
-	    $log->log("Split AOU with |: '$name'");
+	    $log->warn("Split AOU with |: '$name'");
 	}
 
 	my $parent = $aou->{Parent_Group_ID};
 
 	if( $parent && !$aous->{$parent} ) {
-	    $log->log("AOU $aouID - $name parent group ID $parent not found.\n");
+	    $log->warn("AOU $aouID - $name parent group ID $parent not found.\n");
 	} else {
 	    if( $name =~ /^RS/ || $name =~ /Associate|Member|Core/ ) {
 		# For now, delete Research Strength AOUs, because the
 		# query that generates the raw People file is not linking 
 		# to them.
 
-		$log->log("Removing RS '$name'");
+		$log->info("Removing RS '$name'");
 		delete $aous->{$aouID};
 		next AOU;
 	    }
@@ -214,14 +220,14 @@ sub clean_aous {
 	    if( $name =~ /^([A-Z ]+)\.(.*)$/ ) {
 		if( my $pref = $config->{prefixes}{$1} ) {
 		    $name = join('.', $pref, $2);
-		    $log->log("Changed prefix $1 to $pref in '$name'");
+		    $log->warn("Changed prefix $1 to $pref in '$name'");
 		}
 	    } else {
 		if( $parent && $config->{prefixes}{$parent} ) {
-		    $log->log("Prefixed $config->{prefixes}{$parent} to '$name'");
+		    $log->warn("Prefixed $config->{prefixes}{$parent} to '$name'");
 		    $name = join('.', $config->{prefixes}{$parent}, $name);
 		} else {
-		    $log->log("Warning '$name' without prefix");
+		    $log->warn("Warning '$name' without prefix");
 		}
 	    }
 	}
@@ -271,10 +277,10 @@ sub make_urls {
 		$url =~ s/\$ID/$person->{SMID}/;
 		$person->{Staff_Profile_Homepage} = $url;
 	    } else {
-		$log->log("[$desc] Unmatched MU code: '$mu_code' for AOU '$aouID'\n");
+		$log->warn("[$desc] Unmatched MU code: '$mu_code' for AOU '$aouID'\n");
 	    }
 	} else {
-	    $log->log("[$desc] Unmatched AOU code: '$aouID'\n"); 
+	    $log->warn("[$desc] Unmatched AOU code: '$aouID'\n"); 
 	}
     }
 }
