@@ -1,10 +1,18 @@
 #!/usr/bin/perl
 
-=HEAD NAME
+=head1 NAME
 
 clean_mint_parties.pl
 
-=HEAD DESCRIPTION
+=head1 SYNOPSIS
+
+  [... java app retrieves the raw CSV from staff module... ]
+
+  ./clean_mint_parties.pl -c mintIntConfig.xml
+  ./test_urls.pl          -c mintIntConfig.xml
+
+
+=head1 DESCRIPTION
 
 A script to perform the following data-cleaning operations on the
 feeds for parties (people and groups) after they are fetched from the
@@ -12,34 +20,67 @@ Staff Module and before they are harvested by Mint:
 
 =over 4
 
+=item Encrypt staff numbers to use as an ID
+
 =item Throw away old AOUs marked "DO NOT USE"
 
 =item Generate staff profile URLs
 
 =back
 
-=head SUBROUTINES
+
+=head1 CONFIGURATION
+
+=head2 Environment variables
+
+If any of these is missing, the script won't run:
 
 =over 4
+
+=item MINT_PERLLIB - location of MintUtils.pm
+
+=item MINT_CONFIG - location of the Mint/RDC config XML file
+
+=item MINT_LOG4J - location of the log4j.properties file
+
+=back
+
+=head2 Command-line switches
+
+=over 4
+
+=item -c CONFIGFILE - config file (overrides MINT_CONFIG above)
+
+=item -n            - Don't do live URL tests
+
+=item -h            - Print help
+
+=back
 
 =cut
 
 use strict;
 
-use lib $ENV{MINT_PERL_LOCATION};
+if( ! $ENV{MINT_PERLLIB} || ! $ENV{MINT_CONFIG} || ! $ENV{MINT_LOG4J}) {
+	die("One or more missing environment variables.\nRun perldoc $0 for more info.\n");
+}
 
+
+use lib $ENV{MINT_PERLLIB};
 
 use Data::Dumper;
 use Getopt::Std;
 use Log::Log4perl;
+use Crypt::Skip32;
 
 use MintUtils qw(read_csv read_mint_cfg write_csv);
 
 my $DEFAULT_CONFIG = 'config.xml';
+my $LOGGER = 'mintInt.clean';
 
 my %opts = ();
 
-getopts("c:dh", \%opts) || usage();
+getopts("c:h", \%opts) || usage();
 
 if( $opts{h} ) {
     usage();
@@ -49,17 +90,11 @@ die("Need to point MINT_LOG4J to the log4j.properties file\n") unless $ENV{MINT_
 
 Log::Log4perl::init($ENV{MINT_LOG4J});
 
-my $log = Log::Log4perl->get_logger('mintIntegration.perlscripts.clean');
+my $log = Log::Log4perl->get_logger($LOGGER);
 
 my $config = $opts{c} || $ENV{MINT_CONFIG} || $DEFAULT_CONFIG;
 
 my $mint_cfg   = read_mint_cfg(file => $config);
-
-if( $opts{d} ) {
-    print "Dumping config:\n";
-    print Dumper($mint_cfg);
-    exit(0);
-}
 
 
 my $working_dir = $mint_cfg->{dirs}{working} || './';
@@ -113,6 +148,12 @@ make_urls(
     config => $mint_cfg->{landingPageURLs}
 );
 
+
+my $reindexed = encrypt_ids(
+	people => $people,
+	config => $mint_cfg->{staffIDs}
+);
+
 write_csv(
     config => $mint_cfg,
     dir => $harvest_dir,
@@ -125,16 +166,19 @@ write_csv(
     config => $mint_cfg,
     dir => $working_dir,
     query => 'People',
-    file => 'raw',
-    records => $people
+    file => 'encrypted',
+    records => $reindexed
     );
 
 $log->info("Done.\n");
 
+=head1 SUBROUTINES
+
+=over 4
 
 =item usage()
 
-CLI instructions
+Prints instructions
 
 =cut
 
@@ -156,11 +200,24 @@ Command-line options:
 -d       Dump the config data structure and quit
 -h       Print this message
 
+Environment variables:
+
+MINT_PERLLIB 	 - location of the MintUtils.pm library
+MINT_CONFIG      - location of the Mint/RDC config XML file
+MINT_LOG4J       - location of the log4j.properties file
+
+All of the Mint integration code uses the Log4j logging 
+framework (or its Perl emulator) so that logging can be controlled
+in a single config gile.  This script's logging id is
+'$LOGGER'.
+
 EOTXT
 exit(0);
 
 
 }
+
+
 
 =item clean_aous(aous => $aous)
 
@@ -262,27 +319,72 @@ sub make_urls {
     my $config = $params{config};
 
     for my $id ( keys %$people ) {
-	my $person = $people->{$id};
-	my $desc = join(
-	    ' ',
-	    $person->{StaffID},
-	    $person->{Given_Name},
-	    $person->{Family_Name}
+		my $person = $people->{$id};
+		my $desc = join(
+	    	' ',
+	    	$person->{StaffID},
+	    	$person->{Given_Name},
+	    	$person->{Family_Name}
 	    );
-	my $aouID = $person->{GroupID_1};
+		my $aouID = $person->{GroupID_1};
 
-	if( my $aou = $aous->{$aouID} ) {
-	    my $mu_code = $aou->{Parent_Group_ID};
-	    if( my $url = $config->{$mu_code} ) {
-		$url =~ s/\$ID/$person->{SMID}/;
-		$person->{Staff_Profile_Homepage} = $url;
-	    } else {
-		$log->warn("[$desc] Unmatched MU code: '$mu_code' for AOU '$aouID'\n");
-	    }
-	} else {
-	    $log->warn("[$desc] Unmatched AOU code: '$aouID'\n"); 
-	}
+		if( my $aou = $aous->{$aouID} ) {
+		    my $mu_code = $aou->{Parent_Group_ID};
+	    	if( my $url = $config->{$mu_code} ) {
+				$url =~ s/\$ID/$person->{ID}/;
+				$person->{Staff_Profile_Homepage} = $url;
+	    	} else {
+				$log->warn("[$desc] Unmatched MU code: '$mu_code' for AOU '$aouID'\n");
+	    	}
+		} else {
+	    	$log->warn("[$desc] Unmatched AOU code: '$aouID'\n"); 
+		}
     }
 }
 
+=item encrypt_ids(people => $people, key => $key)
 
+Encrypts the staff IDs to generate a unique, obfuscated integer
+which doesn't depend on anything apart from the staff ID and 
+our encryption key.  This is done to provide an identifier to 
+RDA which doesn't expose the staff ID, but which doesn't depend on
+any other system (like the ID numbers in the staff module).
+
+Uses the Crypt::Skip32 block cypher.
+
+=back
+
+=cut
+
+sub encrypt_ids {
+	my %params = @_;
+	
+	my $people = $params{people};
+	my $key = $params{config}{cryptKey};
+	my $original_id = $params{config}{originalID};
+	
+	my $reindexed = {};
+	
+	if( $key !~ /^[0-9A-F]{20}$/ ) {
+		$log->error("cryptKey must be a 20-digit hexadecimal number.");
+		die("Invalid cryptKey - must be 20-digit hex");
+	}
+	
+	my $keybytes = pack("H20", $key);
+	
+	my $cypher = Crypt::Skip32->new($keybytes);
+	
+	for my $id ( keys %$people ) {
+		my $person = $people->{$id};
+		
+		my $plaintext = pack("N", $id);
+		my $encrypted = $cypher->encrypt($plaintext);
+		my $new_id = unpack("H8", $encrypted);
+		$log->debug("Encrypted $id to $new_id");
+		$reindexed->{$new_id} = $person;
+		$reindexed->{$new_id}{ID} = $new_id;
+		delete $reindexed->{$new_id}{$original_id};
+	}
+	
+	return $reindexed;
+}	
