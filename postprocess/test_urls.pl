@@ -1,36 +1,71 @@
 #!/usr/bin/perl
 
-=HEAD NAME
+=head1 NAME
 
 test_urls.pl
 
-=HEAD SYNOPSIS
+=head1 SYNOPSIS
 
-test_urls.pl
+  [... java app retrieves the raw CSV from staff module... ]
 
-=HEAD DESCRIPTION
+  ./clean_mint_parties.pl -c mintIntConfig.xml
+  ./test_urls.pl          -c mintIntConfig.xml
+
+=head1 DESCRIPTION
+
+After clean_mint_parties has tidied up the raw CSV files, this
+script builds staff profile URLs, tests the URLs by scraping them,
+removing any links which don't work and writes out the final
+people CSV file for harvest by Mint.
 
 Tests all of the staff profile URLs in the 'cooked' People file
 (configured in mintIntConfig.xml), removes the links which don't work,
 and writes out a final version of the file.
 
-=head SUBROUTINES
+=head1 CONFIGURATION
+
+=head2 Environment variables
+
+If any of these is missing, the script won't run:
 
 =over 4
 
+=item MINT_PERLLIB - location of MintUtils.pm
+
+=item MINT_CONFIG  - location of the Mint/RDC config XML file
+
+=item MINT_LOG4J   - location of the log4j.properties file
+
+=back
+
+=head2 Command-line switches
+
+=over 4
+
+=item -c CONFIGFILE - config file (overrides MINT_CONFIG above)
+
+=item -n            - Don't do live URL tests
+
+=item -h            - Print help
+
+=back
+
 =cut
+
+
+if( ! $ENV{MINT_PERLLIB} || ! $ENV{MINT_CONFIG} || ! $ENV{MINT_LOG4J}) {
+	die("One or more missing environment variables.\nRun perldoc $0 for more info.\n");
+}
 
 use strict;
 
-use lib './extras';
-use lib '/home/mike/workspace/FTIUP/lib';
+use lib $ENV{MINT_PERLLIB};
 
 use Data::Dumper;
 use URI;
 use Getopt::Std;
 use Web::Scraper;
-
-use FTIUP::Log;
+use Log::Log4perl;
 
 use MintUtils qw(read_csv read_mint_cfg write_csv);
 
@@ -38,32 +73,48 @@ my $MAX_TEST = undef;
 
 my $DEFAULT_CONFIG = 'config.xml';
 
+my $LOGGER = 'mintInt.test_urls';
+
 my %opts = ();
 
-getopts("c:h", \%opts) || usage();
+getopts("c:nh", \%opts) || usage();
 
 if( $opts{h} ) {
     usage();
 }
 
-my $config = $opts{c} || $DEFAULT_CONFIG;
+Log::Log4perl::init($ENV{MINT_LOG4J});
 
-my $mint_cfg   = read_mint_cfg(file => $config);
+my $log = Log::Log4perl->get_logger($LOGGER);
+
+my $config = $opts{c} || $ENV{MINT_CONFIG} || $DEFAULT_CONFIG;
+
+my $really_test = 1;
+
+if( $opts{n} ) {
+	$really_test = 0;
+}
+
+my $mint_cfg = read_mint_cfg(file => $config);
 
 my $working_dir = $mint_cfg->{dirs}{working} || './';
 my $harvest_dir = $mint_cfg->{dirs}{harvest} || './';
 
-my $log = FTIUP::Log->new(dir => $mint_cfg->{dirs}{logs});
 
 $working_dir .= '/' unless $working_dir =~ m#/$#;
 $harvest_dir .= '/' unless $harvest_dir =~ m#/$#;
+
+$log->info("Reading people");
 
 my $people = read_csv(
     config => $mint_cfg,
     dir => $working_dir,
     query => 'People',
-    file => 'raw'
+    file => 'encrypted'
 );
+
+
+$log->info("Reading AOUs");
 
 my $aous = read_csv(
     config => $mint_cfg,
@@ -72,19 +123,19 @@ my $aous = read_csv(
     file => 'harvest'
 );
 
-my $n = 0;
+$log->info("Testing staff profile URLs");
 
 for my $id ( keys %$people ) {
     if( $people->{$id}{Staff_Profile_Homepage} ) {
-	if( !test_url(person => $people->{$id}) ) {
-	    $people->{$id}{Staff_Profile_Homepage} = undef;
-	}
-    }
-    $n++;
-    if( $MAX_TEST && $n > $MAX_TEST ) {
-        last;
+    	if( $really_test ) {
+			if( !test_url(person => $people->{$id}) ) {
+		    	$people->{$id}{Staff_Profile_Homepage} = undef;
+			}
+    	}
     }
 }
+
+$log->debug("Writing people harvest file");
 
 write_csv(
     config => $mint_cfg,
@@ -94,6 +145,9 @@ write_csv(
     records => $people
 );
 
+=head1 SUBROUTINES
+
+=over 4
 
 =item test_url(person => $person)
 
@@ -125,7 +179,7 @@ sub test_url {
 	    return 1;
 	}
     }
-    $log->log("[$person->{StaffID} $name] profile page not found $url");
+    $log->warn("[$person->{StaffID} $name] profile page not found $url");
 
     return 0;
 }
@@ -133,13 +187,13 @@ sub test_url {
 
 =item usage()
 
-CLI instructions
+Command-line usage instructions
 
 =cut
 
 sub usage {
     print <<EOTXT;
-$0 [-c config.xml -h]
+$0 [-c config.xml -n -h]
 
 A script which tests each staff profile URL in the CSV of researchers to
 be loaded into Mint.  If the page doesn't exist or the researcher's name 
@@ -148,10 +202,28 @@ can't be found in a <h1> tag, the URL is removed from the CSV file.
 Command-line options:
  
 -c FILE  XML config file, default is "$DEFAULT_CONFIG"
+-n       Dry run for testing: doesn't actually check the URLs
 -h       Print this message
 
+Environment variables:
+
+MINT_PERLLIB 	 - location of the MintUtils.pm library
+MINT_CONFIG      - location of the Mint/RDC config XML file
+MINT_LOG4J       - location of the log4j.properties file
+
+All of the Mint integration code uses the Log4j logging 
+framework (or its Perl emulator) so that logging can be controlled
+in a single config gile.  This script's logging id is
+'$LOGGER'.
+
+
 EOTXT
+
 exit(0);
 
 
 }
+
+=back
+
+=cut

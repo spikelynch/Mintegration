@@ -317,9 +317,16 @@ sub make_urls {
     my $people = $params{people};
     my $aous = $params{aous};
     my $config = $params{config};
+    
+    my $urlID = $config->{urlID};
 
     for my $id ( keys %$people ) {
 		my $person = $people->{$id};
+		my $urlID = $person->{$urlID};
+		if( ! $urlID ) {
+			$log->error("Person record $id without urlID ($urlID)");
+			die;
+		}
 		my $desc = join(
 	    	' ',
 	    	$person->{StaffID},
@@ -330,8 +337,8 @@ sub make_urls {
 
 		if( my $aou = $aous->{$aouID} ) {
 		    my $mu_code = $aou->{Parent_Group_ID};
-	    	if( my $url = $config->{$mu_code} ) {
-				$url =~ s/\$ID/$person->{ID}/;
+	    	if( my $url = $config->{faculties}{$mu_code} ) {
+				$url =~ s/\$ID/$person->{$urlID}/;
 				$person->{Staff_Profile_Homepage} = $url;
 	    	} else {
 				$log->warn("[$desc] Unmatched MU code: '$mu_code' for AOU '$aouID'\n");
