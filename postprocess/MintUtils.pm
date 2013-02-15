@@ -326,7 +326,7 @@ sub read_mint_cfg {
 	if( validate_config(config => $config, log => $log) ) {
 		return $config;
 	} else {
-		die;
+		return undef;
 	}
 }
 

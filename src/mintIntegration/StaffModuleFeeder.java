@@ -17,7 +17,6 @@ public class StaffModuleFeeder {
     
     private static Logger log = LoggerFactory.getLogger(HandleAdmin.class);
    
-    
     public static void main(String[] args) {
 
     	String config_file = null;

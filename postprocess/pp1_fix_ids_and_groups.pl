@@ -8,8 +8,8 @@ clean_mint_parties.pl
 
   [... java app retrieves the raw CSV from staff module... ]
 
-  ./clean_mint_parties.pl -c mintIntConfig.xml
-  ./test_urls.pl          -c mintIntConfig.xml
+  ./pp1_fix_ids_and_groups.pl -c mintIntConfig.xml
+  ./pp2_test_profile_urls.pl -c mintIntConfig.xml
 
 
 =head1 DESCRIPTION
@@ -94,16 +94,22 @@ my $log = Log::Log4perl->get_logger($LOGGER);
 
 my $config = $opts{c} || $ENV{MINT_CONFIG} || $DEFAULT_CONFIG;
 
-my $mint_cfg   = read_mint_cfg(file => $config);
+my $mint_cfg   = read_mint_cfg(file => $config) || do {
+	$log->fatal("Configuration error.");
+	exit(1);
+};
 
+$log->trace(Dumper({ config => $mint_cfg }));
 
-my $working_dir = $mint_cfg->{dirs}{working} || './';
-my $harvest_dir = $mint_cfg->{dirs}{harvest} || './';
-
+my $working_dir = $mint_cfg->{locations}{working} || './';
+my $harvest_dir = $mint_cfg->{locations}{harvest} || './';
 
 
 $working_dir .= '/' unless $working_dir =~ m#/$#;
 $harvest_dir .= '/' unless $harvest_dir =~ m#/$#;
+
+$log->debug("Working dir $working_dir");
+$log->debug("Harvest dir $harvest_dir"); 
 
 my $people = read_csv(
     config => $mint_cfg,
@@ -318,13 +324,13 @@ sub make_urls {
     my $aous = $params{aous};
     my $config = $params{config};
     
-    my $urlID = $config->{urlID};
-
+    my $urlIDfield = $config->{urlID};
+    
     for my $id ( keys %$people ) {
 		my $person = $people->{$id};
-		my $urlID = $person->{$urlID};
+		my $urlID = $person->{$urlIDfield};
 		if( ! $urlID ) {
-			$log->error("Person record $id without urlID ($urlID)");
+			$log->fatal("Person record $id without urlID ($urlIDfield)");
 			die;
 		}
 		my $desc = join(
@@ -338,7 +344,7 @@ sub make_urls {
 		if( my $aou = $aous->{$aouID} ) {
 		    my $mu_code = $aou->{Parent_Group_ID};
 	    	if( my $url = $config->{faculties}{$mu_code} ) {
-				$url =~ s/\$ID/$person->{$urlID}/;
+				$url =~ s/\$ID/$urlID/;
 				$person->{Staff_Profile_Homepage} = $url;
 	    	} else {
 				$log->warn("[$desc] Unmatched MU code: '$mu_code' for AOU '$aouID'\n");

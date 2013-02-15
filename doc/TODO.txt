@@ -1,5 +1,14 @@
 TODO list for RDC integration
 
+- Document the XML config file properly
+
+- Implement encryption of staff IDs.
+
+- Overall design document for the integration code (explaining that the 
+  java component is just for downloading, and that data massaging happens
+  in the Perl postprocessing.
+
+
 - A Perl script to generate and test staff profile URLs, based on the
   People and Groups CSV files.  I don't want to do this in Java
   because it's too much of a hack.   <--- DONE

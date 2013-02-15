@@ -8,8 +8,8 @@ test_urls.pl
 
   [... java app retrieves the raw CSV from staff module... ]
 
-  ./clean_mint_parties.pl -c mintIntConfig.xml
-  ./test_urls.pl          -c mintIntConfig.xml
+  ./pp1_fix_ids_and_groups.pl -c mintIntConfig.xml
+  ./pp2_test_profile_urls.pl  -c mintIntConfig.xml
 
 =head1 DESCRIPTION
 
@@ -95,14 +95,24 @@ if( $opts{n} ) {
 	$really_test = 0;
 }
 
-my $mint_cfg = read_mint_cfg(file => $config);
 
-my $working_dir = $mint_cfg->{dirs}{working} || './';
-my $harvest_dir = $mint_cfg->{dirs}{harvest} || './';
+my $mint_cfg   = read_mint_cfg(file => $config) || do {
+	$log->fatal("Configuration error.");
+	exit(1);
+};
+
+$log->trace(Dumper({ config => $mint_cfg }));
+
+my $working_dir = $mint_cfg->{locations}{working} || './';
+my $harvest_dir = $mint_cfg->{locations}{harvest} || './';
 
 
 $working_dir .= '/' unless $working_dir =~ m#/$#;
 $harvest_dir .= '/' unless $harvest_dir =~ m#/$#;
+
+$log->debug("Working dir $working_dir");
+$log->debug("Harvest dir $harvest_dir"); 
+
 
 $log->info("Reading people");
 
