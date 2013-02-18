@@ -1,8 +1,16 @@
 TODO list for RDC integration
 
+- Subset of all staff records for testing
+
+- See if we can only get active records from staff module.
+
+
+
+
+
 - Document the XML config file properly
 
-- Implement encryption of staff IDs.
+- Implement encryption of staff IDs.  <--- DONE
 
 - Overall design document for the integration code (explaining that the 
   java component is just for downloading, and that data massaging happens
