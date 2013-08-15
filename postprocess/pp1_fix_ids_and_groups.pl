@@ -67,11 +67,13 @@ if( ! $ENV{MINT_PERLLIB} || ! $ENV{MINT_CONFIG} || ! $ENV{MINT_LOG4J}) {
 
 
 use lib $ENV{MINT_PERLLIB};
+use lib $ENV{COATAGLUE_PERLLIB};
 
 use Data::Dumper;
 use Getopt::Std;
 use Log::Log4perl;
 use Crypt::Skip32;
+
 
 use MintUtils qw(read_csv read_mint_cfg write_csv);
 
@@ -93,6 +95,7 @@ Log::Log4perl::init($ENV{MINT_LOG4J});
 my $log = Log::Log4perl->get_logger($LOGGER);
 
 my $config = $opts{c} || $ENV{MINT_CONFIG} || $DEFAULT_CONFIG;
+
 
 my $mint_cfg   = read_mint_cfg(file => $config) || do {
 	$log->fatal("Configuration error.");
@@ -160,11 +163,14 @@ my $reindexed = encrypt_ids(
 	config => $mint_cfg->{staffIDs}
 );
 
+my $ordered_groups = sort_groups_hierarchically(groups => $aous);
+
 write_csv(
     config => $mint_cfg,
     dir => $harvest_dir,
     query => 'Groups',
     file => 'harvest',
+    sortby => $ordered_groups,
     records => $aous
 );
 
@@ -273,7 +279,9 @@ sub clean_aous {
 		# to them.
 
 		$log->info("Removing RS '$name'");
-		delete $aous->{$aouID};
+		delete $aous->{$aouID};use Data::Dumper;
+use Template;
+		
 		next AOU;
 	    }
 
@@ -355,6 +363,8 @@ sub make_urls {
     }
 }
 
+
+
 =item encrypt_ids(people => $people, key => $key)
 
 Encrypts the staff IDs to generate a unique, obfuscated integer
@@ -368,6 +378,9 @@ Uses the Crypt::Skip32 block cypher.
 =back
 
 =cut
+
+# FIXME - use CoataGlue::Person to do the encryption.
+
 
 sub encrypt_ids {
 	my %params = @_;
@@ -401,3 +414,48 @@ sub encrypt_ids {
 	
 	return $reindexed;
 }	
+
+
+sub sort_groups_hierarchically {
+	my %params = @_;
+	
+	my $groups = $params{groups};
+	my @roots = ();
+	
+	for my $id ( keys %$groups ) {
+		my $parent = $groups->{$id}{Parent_Group_ID};
+		if( $parent ) {
+			if( $groups->{$parent} ) {
+				push @{$groups->{$parent}{children}}, $groups->{$id};
+			} else {
+				$log->warn("Group $id: Parent_Group_ID '$parent' not found");
+			}
+		} else {
+			push @roots, $groups->{$id}
+		}
+	}
+	
+	my $ordered = [];
+	
+	for my $root ( @roots ) {
+		groups_descend(node => $root, keys => $ordered);
+	}
+	return $ordered;
+}
+
+
+sub groups_descend {
+	my %params = @_;
+	
+	my $node = $params{node};
+	my $keys = $params{keys};
+	
+	$log->trace("Rec descend node $node->{ID} $node->{Name}");
+	
+	push @$keys, $node->{ID};
+	
+	for my $child ( @{$node->{children}} ) {
+		groups_descend(node => $child, keys => $keys);
+	}
+	
+}

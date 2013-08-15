@@ -18,6 +18,10 @@ script builds staff profile URLs, tests the URLs by scraping them,
 removing any links which don't work and writes out the final
 people CSV file for harvest by Mint.
 
+It also strips HTML out of the staff biographies in a completely crude
+fashion: this was done in a hurry so that we can get it through the
+NLA test system.
+
 Tests all of the staff profile URLs in the 'cooked' People file
 (configured in mintIntConfig.xml), removes the links which don't work,
 and writes out a final version of the file.
@@ -45,6 +49,10 @@ If any of these is missing, the script won't run:
 =item -c CONFIGFILE - config file (overrides MINT_CONFIG above)
 
 =item -n            - Don't do live URL tests
+
+=item -m MAX        - set a maximum number of records to process.
+                      If live testing, this will only count 
+                      records with a working URL. 
 
 =item -h            - Print help
 
@@ -77,7 +85,7 @@ my $LOGGER = 'mintInt.test_urls';
 
 my %opts = ();
 
-getopts("c:nh", \%opts) || usage();
+getopts("c:m:nh", \%opts) || usage();
 
 if( $opts{h} ) {
     usage();
@@ -89,10 +97,22 @@ my $log = Log::Log4perl->get_logger($LOGGER);
 
 my $config = $opts{c} || $ENV{MINT_CONFIG} || $DEFAULT_CONFIG;
 
+$log->debug("Logging to $LOGGER");
+
 my $really_test = 1;
 
 if( $opts{n} ) {
 	$really_test = 0;
+}
+
+if( $opts{m} ) {
+	if( $opts{m} =~ /^\d+$/ ) {
+		$MAX_TEST = $opts{m};
+		$log->debug("Maximum tests set to $MAX_TEST");
+	} else {
+		$log->error("Value passed to -m must be an integer.");
+		die("Can't continue.\n");
+	}
 }
 
 
@@ -135,24 +155,55 @@ my $aous = read_csv(
 
 $log->info("Testing staff profile URLs");
 
-for my $id ( keys %$people ) {
+my $tested = {};
+
+my $n = 0;
+
+PERSON: for my $id ( keys %$people ) {
     if( $people->{$id}{Staff_Profile_Homepage} ) {
     	if( $really_test ) {
 			if( !test_url(person => $people->{$id}) ) {
 		    	$people->{$id}{Staff_Profile_Homepage} = undef;
+			} else {
+				$n++;
 			}
+    	} else {
+    		$n++;
     	}
+    }
+    $tested->{$id} = $people->{$id};
+    if( defined $MAX_TEST && $n > $MAX_TEST ) {
+    	last PERSON;
     }
 }
 
-$log->debug("Writing people harvest file");
+$log->info("Stripping HTML from descriptions");
+
+PERSON: for my $id ( keys %$people ) {
+    my $desc = $people->{$id}{Description};
+    my $odesc = $desc;
+    my $changes = ( $desc =~ s/<[^>]+>/ /g );
+    if( $changes ) {
+        if( $desc =~ /</ ) {
+            $log->error("[$id] Unsuccessful HTML strip");
+        } else {
+            $log->warn("[$id] $changes HTML tags removed from bio");
+} 
+        $people->{$id}{Description} = $desc;
+    }
+}
+
+
+
+
+$log->info("Writing people harvest file");
 
 write_csv(
     config => $mint_cfg,
     dir => $harvest_dir,
     query => 'People',
     file => 'harvest',
-    records => $people
+    records => $tested
 );
 
 =head1 SUBROUTINES
@@ -177,17 +228,25 @@ sub test_url {
     my $name = join(' ', $person->{Given_Name}, $person->{Family_Name});
 
     my $get_name = scraper {
-	process "h1", "head[]" => 'TEXT';
+		process "h1", "head[]" => 'TEXT';
     };
 
     my $uri = URI->new($url);
-
-    my $result = $get_name->scrape($uri);
+	my $result;
+	
+	eval {
+		$result = $get_name->scrape($uri);
+	};
+	
+	if( $@ ) {
+		$log->error("[$person->{StaffID} $name] web request failed $url: $@");
+		return 0;
+	}
 
     for my $h1 ( @{$result->{head}} ) {
-	if( $h1 =~ /$name/ ) {
-	    return 1;
-	}
+		if( $h1 =~ /$name/ ) {
+	    	return 1;
+		}
     }
     $log->warn("[$person->{StaffID} $name] profile page not found $url");
 

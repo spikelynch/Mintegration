@@ -144,6 +144,20 @@ sub read_csv {
 Generic sub to write out a CSV file.  Config hashref is the same as for
 read_csv.
 
+Parameters:
+
+=over 4
+
+=item file - complete filepath
+
+=item config - hashref, same as for read_csv
+
+=item records - data: a hashref by unique ID of hashrefs by field names
+
+=item sortby - either a ref to a sort function, or an arrayref of sorted IDs
+
+=back
+
 =cut
 
 sub write_csv {
@@ -154,6 +168,7 @@ sub write_csv {
     my $config = $params{config};
     my $query = $params{query};
     my $records = $params{records};
+    my $sortby = $params{sortby};
 
 	my $log = Log::Log4perl->get_logger($LOGGER);
 
@@ -170,6 +185,7 @@ sub write_csv {
 
     my $path = join('/', $dir, $filename);
 
+
 	$log->info("Writing CSV to $path");
 
     open my $fh, ">:encoding(utf8)", $path || die "Can't write $path: $!";
@@ -177,8 +193,25 @@ sub write_csv {
 
     $csv->print($fh, \@fields);
     print $fh "\n";
+    
+    my @keys = ();
+    
+    if( $sortby ) {
+    	if( ref($sortby) eq 'ARRAY' ) {
+    		@keys = @$sortby;
+    	} elsif( ref($sortby) eq 'CODE' ) {
+    		@keys = sort $sortby keys %$records;
+    	} else {
+    		$log->error(
+    			"'sortby' argument must be an arrayref or coderef"
+    			);
+    		die("Invalid argument");
+    	}
+    } else {
+    	@keys = sort keys %$records;
+    }
 
-    for my $id ( sort keys %$records ) {
+    for my $id ( @keys ) {
 	my %record = %{$records->{$id}};
 
 	for my $field ( @fields ) {
