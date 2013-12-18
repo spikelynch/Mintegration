@@ -11,6 +11,9 @@ use Crypt::Skip32;
 # This is a quicky to generate an activities file for Mint ingest, and to
 # also filter the people file down to only those who have been named on
 # a post-2009 projecct with an unique SFOLIO number
+# AND also append the handle prefix to their URls.
+
+my $HDL_PREFIX = 'http://hdl.handle.net/11057/id';
 
 
 Log::Log4perl::init('./log4perl.conf');
@@ -257,7 +260,9 @@ open(my $fh3, ">:encoding(utf8)", $PEOPLE_FILTERED)  || do {
 $csv->print($fh3, $headers);
 
 for my $id ( keys %$filtered ) {
-    $csv->print($fh3, $filtered->{$id});
+    my @record = @{$filtered->{$id}};
+    $record[0] = $HDL_PREFIX . $record[0]; 
+    $csv->print($fh3, \@record);
 }
 
 close $fh3;

@@ -55,6 +55,8 @@ If any of these is missing, the script won't run:
 
 =item -h            - Print help
 
+=item -i ID         - encrypt a single staff ID and write to STDOUT
+
 =back
 
 =cut
@@ -82,7 +84,7 @@ my $LOGGER = 'mintInt.clean';
 
 my %opts = ();
 
-getopts("c:h", \%opts) || usage();
+getopts("c:i:h", \%opts) || usage();
 
 if( $opts{h} ) {
     usage();
@@ -103,6 +105,14 @@ my $mint_cfg   = read_mint_cfg(file => $config) || do {
 };
 
 $log->trace(Dumper({ config => $mint_cfg }));
+
+if( my $id = $opts{i} ) {
+    my $eid = encrypt_one_id(ptid => $id, config => $mint_cfg->{staffIDs});
+    print "$id => $eid\n";
+    exit;
+}
+
+
 
 my $working_dir = $mint_cfg->{locations}{working} || './';
 my $harvest_dir = $mint_cfg->{locations}{harvest} || './';
@@ -413,6 +423,31 @@ sub encrypt_ids {
 	}
 	
 	return $reindexed;
+}	
+
+
+
+sub encrypt_one_id {
+	my %params = @_;
+	
+    my $ptid = $params{ptid};
+	my $key = $params{config}{cryptKey};
+	
+	my $reindexed = {};
+	
+	if( $key !~ /^[0-9A-F]{20}$/ ) {
+		$log->error("cryptKey must be a 20-digit hexadecimal number.");
+		die("Invalid cryptKey - must be 20-digit hex");
+	}
+	
+	my $keybytes = pack("H20", $key);
+	
+	my $cypher = Crypt::Skip32->new($keybytes);
+	
+    my $plaintext = pack("N", $ptid);
+    my $encrypted = $cypher->encrypt($plaintext);
+    my $new_id = unpack("H8", $encrypted);
+	return $new_id;
 }	
 
 

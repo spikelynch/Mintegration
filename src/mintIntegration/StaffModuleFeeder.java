@@ -15,7 +15,7 @@ public class StaffModuleFeeder {
     private static XMLConfiguration conf = null;
     private static Connection con = null;
     
-    private static Logger log = LoggerFactory.getLogger(HandleAdmin.class);
+    private static Logger log = LoggerFactory.getLogger(StaffModuleFeeder.class);
    
     public static void main(String[] args) {
 

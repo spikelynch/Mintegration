@@ -1,3 +1,15 @@
+After the ANDS deadlines -
+
+Fix the problem with not quoting commas.
+
+
+
+
+
+
+
+
+
 TODO list for RDC integration
 
 - Subset of all staff records for testing
