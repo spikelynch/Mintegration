@@ -2,7 +2,7 @@
 
 =head1 NAME
 
-clean_mint_parties.pl
+pp1_fix_ids_and_groups.pl
 
 =head1 SYNOPSIS
 
@@ -39,6 +39,8 @@ If any of these is missing, the script won't run:
 
 =item MINT_PERLLIB - location of MintUtils.pm
 
+=item COATAGLUE_PERLLIB - location of the CoataGlue library
+
 =item MINT_CONFIG - location of the Mint/RDC config XML file
 
 =item MINT_LOG4J - location of the log4j.properties file
@@ -56,6 +58,7 @@ If any of these is missing, the script won't run:
 =item -h            - Print help
 
 =item -i ID         - encrypt a single staff ID and write to STDOUT
+
 
 =back
 
@@ -124,6 +127,8 @@ $harvest_dir .= '/' unless $harvest_dir =~ m#/$#;
 $log->debug("Working dir $working_dir");
 $log->debug("Harvest dir $harvest_dir"); 
 
+$log->info("Reading raw people file");
+
 my $people = read_csv(
     config => $mint_cfg,
     dir => $working_dir,
@@ -131,12 +136,17 @@ my $people = read_csv(
     file => 'raw'
 );
 
+$log->info("Reading raw groups file");
+
 my $aous = read_csv(
     config => $mint_cfg,
     dir => $working_dir,
     query => 'Groups',
     file => 'raw'
 );
+
+$log->info("Reading raw MU file");
+
 
 my $mus = read_csv(
     config => $mint_cfg,
@@ -148,18 +158,20 @@ my $mus = read_csv(
 
 for my $muid ( keys %$mus ) {
     if( $aous->{$muid} ) {
-	$log->warn("MU/AOU key clash: $muid\n");
+        $log->warn("MU/AOU key clash: $muid\n");
     } else {
-	$aous->{$muid} = $mus->{$muid}
+        $aous->{$muid} = $mus->{$muid}
     }
 }
 
+$log->info("Cleaning AOUs");
 
 clean_aous(
     aous => $aous,
     config => $mint_cfg->{groupTidy}
 );
 
+$log->info("Building staff URLs");
 
 make_urls(
     aous => $aous,
@@ -167,6 +179,7 @@ make_urls(
     config => $mint_cfg->{landingPageURLs}
 );
 
+$log->info("Encrypting staff IDs");
 
 my $reindexed = encrypt_ids(
 	people => $people,
@@ -174,6 +187,8 @@ my $reindexed = encrypt_ids(
 );
 
 my $ordered_groups = sort_groups_hierarchically(groups => $aous);
+
+$log->info("Writing groups file");
 
 write_csv(
     config => $mint_cfg,
@@ -183,6 +198,8 @@ write_csv(
     sortby => $ordered_groups,
     records => $aous
 );
+
+$log->info("Writing encrypted staff file");
 
 write_csv(
     config => $mint_cfg,
@@ -200,7 +217,7 @@ $log->info("Done.\n");
 
 =item usage()
 
-Prints instructions
+Prints a command-line help message.
 
 =cut
 
@@ -224,13 +241,14 @@ Command-line options:
 
 Environment variables:
 
-MINT_PERLLIB 	 - location of the MintUtils.pm library
-MINT_CONFIG      - location of the Mint/RDC config XML file
-MINT_LOG4J       - location of the log4j.properties file
+MINT_PERLLIB 	  - location of the MintUtils.pm library
+COATAGLUE_PERLLIB - location of the CoataGlue libraries
+MINT_CONFIG       - location of the Mint/RDC config XML file
+MINT_LOG4J        - location of the log4j.properties file
 
 All of the Mint integration code uses the Log4j logging 
 framework (or its Perl emulator) so that logging can be controlled
-in a single config gile.  This script's logging id is
+in a single config gile.  This script\'s logging id is
 '$LOGGER'.
 
 EOTXT
@@ -240,11 +258,11 @@ exit(0);
 }
 
 
-
+ 
 =item clean_aous(aous => $aous)
 
-Clean the aou records: make sure faculty prefixes are consistent, drop
-any aous marked "DO NOT USE" and any other tidying.
+Clean the aou records: remove faculty prefixes, drop any aous marked
+"DO NOT USE" and any other tidying.
 
 Also reads the MU names from the Parent_Group_Name field and adds them
 in as records (because Mint/RIF-CS don't have different levels of group
@@ -255,65 +273,56 @@ record like ResearchMaster)
 
 sub clean_aous {
     my %params = @_;
-
+    
     my $aous = $params{aous};
     my $config = $params{config};
-
+    
     die("clean_aous needs a config hash") unless $config;
-
+    
     my $ignore_re = qr/$config->{ignore}/;
-
+    
   AOU: for my $aouID ( keys %$aous ) {
-	my $aou = $aous->{$aouID};
-	my $name = $aou->{Name};
-
-	if( $name =~ /$ignore_re/ ) {
-	    $log->info("Ignoring AOU $aouID $name\n");
-	    delete $aous->{$aouID};
-	    next AOU;
-	}
-
-	if( $name =~ /\|/ ) {
-	    ( $name ) = split(/\|/, $name);
-	    $log->warn("Split AOU with |: '$name'");
-	}
-
-	my $parent = $aou->{Parent_Group_ID};
-
-	if( $parent && !$aous->{$parent} ) {
-	    $log->warn("AOU $aouID - $name parent group ID $parent not found.\n");
-	} else {
-	    if( $name =~ /^RS/ || $name =~ /Associate|Member|Core/ ) {
-		# For now, delete Research Strength AOUs, because the
-		# query that generates the raw People file is not linking 
-		# to them.
-
-		$log->info("Removing RS '$name'");
-		delete $aous->{$aouID};use Data::Dumper;
-use Template;
-		
-		next AOU;
-	    }
-
-	    # Make sure that all divisions with a Faculty parent
-	    # get a standardised Faculty prefix
-
-	    if( $name =~ /^([A-Z ]+)\.(.*)$/ ) {
-		if( my $pref = $config->{prefixes}{$1} ) {
-		    $name = join('.', $pref, $2);
-		    $log->warn("Changed prefix $1 to $pref in '$name'");
-		}
-	    } else {
-		if( $parent && $config->{prefixes}{$parent} ) {
-		    $log->warn("Prefixed $config->{prefixes}{$parent} to '$name'");
-		    $name = join('.', $config->{prefixes}{$parent}, $name);
-		} else {
-		    $log->warn("Warning '$name' without prefix");
-		}
-	    }
-	}
-	$aou->{Name} = $name;
-    }
+      my $aou = $aous->{$aouID};
+      my $name = $aou->{Name};
+      
+      if( $name =~ /$ignore_re/ ) {
+          $log->info("Ignoring AOU $aouID $name\n");
+          delete $aous->{$aouID};
+          next AOU;
+      }
+      
+      if( $name =~ /\|/ ) {
+          ( $name ) = split(/\|/, $name);
+          $log->warn("Split AOU with |: '$name'");
+      }
+      
+      my $parent = $aou->{Parent_Group_ID};
+      
+      if( $parent && !$aous->{$parent} ) {
+          $log->warn("AOU $aouID - $name parent group ID $parent not found.\n");
+      } else {
+          if( $name =~ /^RS/ || $name =~ /Associate|Member|Core/ ) {
+              # For now, delete Research Strength AOUs, because the
+              # query that generates the raw People file is not linking 
+              # to them.
+              
+              $log->debug("Removing RS '$name'");
+              delete $aous->{$aouID};use Data::Dumper;
+              use Template;
+              
+              next AOU;
+          }
+          
+          # Make sure that all divisions with a Faculty parent
+          # get a standardised Faculty prefix
+          
+          if( $name =~ /^([A-Za-z ]+)\.(.*)$/ ) {
+              $log->debug("Dropping prefix $1 from $2");
+              $name = $2;
+          }
+      }
+      $aou->{Name} = $name;
+  }
 }
 
 
@@ -323,14 +332,19 @@ use Template;
 
 =item make_urls(people => $people, aous => $aous, config => $config)
 
+Updated staff profile URL builder which uses their email prefix as in:
+
+$FIRSTNAME.$LASTNAME@uts.edu.au => www.uts.edu.au/staff/$FIRSTNAME.$LASTNAME
+
+
 Tries to make staff profile URLs for each record in people, by matching
 them against an AOU, looking for that AOU's parent faculty, and then filling
-out a URL from the config file (each faculty has a separate staff
-directory, although this is expected to change in 2013).
+out a URL from the config file.
 
 If a URL can't be made (because the staff member doesn't belong to an AOU
 which can be connected to a faculty) they stay in the data but a warning
 is sent to STDERR.
+
 
 =cut
 
@@ -344,12 +358,12 @@ sub make_urls {
     
     my $urlIDfield = $config->{urlID};
     
-    for my $id ( keys %$people ) {
+  PERSON: for my $id ( keys %$people ) {
 		my $person = $people->{$id};
 		my $urlID = $person->{$urlIDfield};
 		if( ! $urlID ) {
-			$log->fatal("Person record $id without urlID ($urlIDfield)");
-			die;
+			$log->warn("Person record $id without urlID ($urlIDfield) - skipping");
+			next PERSON;
 		}
 		my $desc = join(
 	    	' ',
@@ -377,11 +391,16 @@ sub make_urls {
 
 =item encrypt_ids(people => $people, key => $key)
 
-Encrypts the staff IDs to generate a unique, obfuscated integer
-which doesn't depend on anything apart from the staff ID and 
-our encryption key.  This is done to provide an identifier to 
-RDA which doesn't expose the staff ID, but which doesn't depend on
-any other system (like the ID numbers in the staff module).
+Encrypts the staff IDs to generate a unique, obfuscated hex integer
+which doesn't depend on anything apart from the staff ID and our
+encryption key.  This is done to provide an identifier to RDA which
+doesn't expose the staff ID, but which doesn't depend on any other
+system (like the ID numbers in the staff module).
+
+$people is a hashref of people. $key is the value in each person to 
+use as the hash.
+
+Returns a hashref with the new, encrypted IDs as keys.
 
 Uses the Crypt::Skip32 block cypher.
 
@@ -426,6 +445,14 @@ sub encrypt_ids {
 }	
 
 
+=item encrypt_one_id(ptid => $id, config => $config)
+
+Encrypts a single staff ID for the -i flag, returning the encrypted string.
+
+=cut
+
+
+
 
 sub encrypt_one_id {
 	my %params = @_;
@@ -450,6 +477,14 @@ sub encrypt_one_id {
 	return $new_id;
 }	
 
+
+=item sort_groups_hierarchically(groups => $groups)
+
+Takes the groups (which are a flat list of records with links to parent
+groups) and sorts them into a list where every group's parents are
+guaranteed to occur earlier in the list.
+
+=cut
 
 sub sort_groups_hierarchically {
 	my %params = @_;
@@ -477,6 +512,9 @@ sub sort_groups_hierarchically {
 	}
 	return $ordered;
 }
+
+
+
 
 
 sub groups_descend {

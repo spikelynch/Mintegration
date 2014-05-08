@@ -9,7 +9,7 @@ use Text::CSV;
 use Data::Dumper;
 use Log::Log4perl;
 
-my $LOGGER = 'MintInt.MintUtils';
+my $LOGGER = 'mintInt.MintUtils';
 
 our @EXPORT_OK = qw(read_csv write_csv read_mint_cfg);
 
@@ -28,7 +28,9 @@ use MintUtils qw(write_csv read_csv read_mint_config);
 
 =head1 GLOBALS
 
-=head2 $CONFIG_VALID
+=over 4
+
+=item $CONFIG_VALID
 
 Crude validation of config entries.  A tree of hashes matching the
 config tree.  If the value for group/var is a hashref, match by
@@ -70,9 +72,10 @@ my $CONFIG_VALID = {
 	}
 };
 	
+=back
 	
 
-=head METHODS
+=head1 METHODS
 
 =over 4
 
@@ -95,7 +98,7 @@ sub read_csv {
     my $config = $params{config};
     my $query = $params{query};
 
-	my $log = Log::Log4perl->get_logger($LOGGER);
+    my $log = Log::Log4perl->get_logger($LOGGER);
 
     my $fconf = $config->{query}{$query}{files}{$file} || do {
 		die("Query/file $query/$file not found, check the config file.\n");
@@ -115,7 +118,7 @@ sub read_csv {
 
     my $csv = Text::CSV->new();
 
-	$log->info("Reading CSV from $path");
+    $log->info("Reading CSV from $path");
 
 
     open my $fh, "<:encoding(utf8)", $path || die("$path: $!");
@@ -419,3 +422,5 @@ sub validate_config {
 
 
 =cut
+
+1;

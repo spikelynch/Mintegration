@@ -2,7 +2,7 @@
 
 =head1 NAME
 
-test_urls.pl
+pp2_test_profile_urls.pl
 
 =head1 SYNOPSIS
 
